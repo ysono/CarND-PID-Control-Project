@@ -93,9 +93,9 @@ public:
   * num_iters_per_phase is the number of simulator events til ... TODO doc
   */
   Twiddle(
-    unsigned int num_iters_per_phase_ = 200,
+    unsigned int num_iters_per_phase_ = 400,
     double final_K_mse_thresh_ = 0.1,
-    double final_K_sum_thresh_ = 0.2) :
+    double final_K_sum_thresh_ = 0.5) :
       pid(K[0], K[1], K[2]),
       num_iters_per_phase(num_iters_per_phase_),
       final_K_mse_thresh(final_K_mse_thresh_),
@@ -118,6 +118,7 @@ public:
       // We've gone through enough iterations to evaluate the error from the current K
 
       double mse = sse / iter_count;
+      std::cout << "mse is " << mse << std::endl;
 
       if (mse < final_K_mse_thresh && K[0] + K[1] + K[2] < final_K_sum_thresh) {
 
@@ -143,11 +144,16 @@ public:
 
   void abort_current_K() {
     change_phase(initial_mse);
+
+    sse = 0;
+    iter_count = 0;
+
+    pid = PID(K[0], K[1], K[2]);
   }
 
   std::string get_K_as_string() {
     std::ostringstream os;
-    os << K[0] << "," << K[1] << "," << K[2];
+    os << "{" << K[0] << " " << K[1] << " " << K[2] << "}";
     return os.str();
   }
 };

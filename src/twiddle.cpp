@@ -14,8 +14,11 @@ private:
   phase curr_phase = testing_zero_hyperparams;
 
   static const int num_hyperparams = 3;
-  double K[num_hyperparams] = {0, 0, 0};
-  double dK[num_hyperparams] = {1, 1, 1};
+  // double K[num_hyperparams] = {0, 0, 0};
+  // double dK[num_hyperparams] = {1, 1, 1};
+  double K[num_hyperparams] = {0.2, 4.0, 0.004};
+  double dK[num_hyperparams] = {0.2, 4.0, 0.004};
+
   short K_ind = -1;
 
   PID pid;
@@ -93,8 +96,8 @@ public:
   * num_iters_per_phase is the number of simulator events til ... TODO doc
   */
   Twiddle(
-    unsigned int num_iters_per_phase_ = 400,
-    double final_K_mse_thresh_ = 0.1,
+    unsigned int num_iters_per_phase_ = 1600,
+    double final_K_mse_thresh_ = 0.001,
     double final_K_sum_thresh_ = 0.5) :
       pid(K[0], K[1], K[2]),
       num_iters_per_phase(num_iters_per_phase_),
@@ -120,7 +123,7 @@ public:
       double mse = sse / iter_count;
       std::cout << "mse is " << mse << std::endl;
 
-      if (mse < final_K_mse_thresh && K[0] + K[1] + K[2] < final_K_sum_thresh) {
+      if (mse < final_K_mse_thresh || K[0] + K[1] + K[2] < final_K_sum_thresh) {
 
         // Sufficiently good hyperparameters are discovered
         // Stop tuning and continue using the existing hyperparams with the existing derivative and integration state

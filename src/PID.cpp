@@ -28,8 +28,5 @@ double PID::update(double process_value) {
     Kd * err_derivative +
     Ki * err_integral;
 
-  // sse += pow(err, 2);
-  // ++sse_count;
-
   return control_variable;
 }

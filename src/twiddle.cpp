@@ -1,3 +1,8 @@
+#ifndef TWIDDLE
+#define TWIDDLE
+#define NUM_K 3
+#endif
+
 #include <tuple>
 #include "PID.h"
 
@@ -13,25 +18,22 @@ private:
 
   phase curr_phase = testing_zero_hyperparams;
 
-  static const int num_hyperparams = 3;
-  // double K[num_hyperparams] = {0, 0, 0};
-  // double dK[num_hyperparams] = {1, 1, 1};
-  double K[num_hyperparams] = {0.2, 4.0, 0.004};
-  double dK[num_hyperparams] = {0.2, 4.0, 0.004};
+  double K[NUM_K];
+  double dK[NUM_K];
 
   short K_ind = -1;
 
   PID pid;
 
-  const unsigned int num_iters_per_phase;
+  const unsigned int num_iters_per_phase = 2400;
 
   double sse = 0; // summed squred error.
   int iter_count = 0;
   const double initial_mse = std::numeric_limits<double>::max();
   double lowest_mse = initial_mse;
-  const double final_K_mse_thresh;
+  const double final_K_mse_thresh = 0.001;
 
-  const double final_K_sum_thresh;
+  const double final_K_sum_thresh = 0.5;
 
   void change_phase(double mse) {
     if (curr_phase == testing_zero_hyperparams) {
@@ -47,21 +49,39 @@ private:
 
       if (mse < lowest_mse) {
         // Increasing the current K was beneficial
-        // We'll keep the increased value for the current K and move on to the next K
+        // Keep the increased value for the current K and move on to the next K
         // Next time we increase/decrease the current K, we'll want to do it faster => make the current dK larger
         // Increase the next K
         // Keep the phase as "testing increased K"
         lowest_mse = mse;
         dK[K_ind] *= 1.1;
-        K_ind = (K_ind + 1) % num_hyperparams;
+        K_ind = (K_ind + 1) % NUM_K;
         K[K_ind] += dK[K_ind];
       } else {
         // Increasing the current K was not beneficial
-        // We'll try the current K again, but this time with a decreased value
-        // Do not adjust the current dK. Adjust the current K to (the pre-increased K minus dK)
-        // Change the phase to "testing decreased K"
-        K[K_ind] -= 2 * dK[K_ind];
-        curr_phase = testing_decreased_K;
+        // We'll try the current K again, but this time with a decreased value, as long as this decreased value is positive
+
+        // Decreased current K is `the pre-increased K minus dK`
+        double decreased_current_K = K[K_ind] - 2 * dK[K_ind];
+
+        if (decreased_current_K > 0) {
+          // Adopt the decreased current K
+          // Do not adjust the current dK.
+          // Change the phase to "testing decreased K"
+          K[K_ind] = decreased_current_K;
+          curr_phase = testing_decreased_K;
+        } else {
+          // Skip the decreased K
+          // Restore the current K to its pre-increase value
+          // Next time we increase/decrease the current K, we'll want to do it slower => make the current dK smaller
+          // Move on to the next K
+          // Increment the next K
+          // Keep the phase as "testing increased K"
+          K[K_ind] -= dK[K_ind];
+          dK[K_ind] *= 0.9;
+          K_ind = (K_ind + 1) % NUM_K;
+          K[K_ind] += dK[K_ind];
+        }
       }
 
     } else if (curr_phase == testing_decreased_K) {
@@ -74,7 +94,7 @@ private:
         dK[K_ind] *= 1.1;
       } else {
         // Neither increasing nor decreasing the current K was beneficial
-        // We'll restore the original (pre-increase and pre-decrease) value for the current K
+        // Restore the original (pre-increase and pre-decrease) value for the current K
         // Next time we increase/decrease the current K, we'll want to do it slower => make the current dK smaller
         K[K_ind] += dK[K_ind];
         dK[K_ind] *= 0.9;
@@ -83,7 +103,7 @@ private:
       // We're done with the current K. Move on to the next K
       // Increase the next K
       // Change the phase to "testing increased K"
-      K_ind = (K_ind + 1) % num_hyperparams;
+      K_ind = (K_ind + 1) % NUM_K;
       K[K_ind] += dK[K_ind];
       curr_phase = testing_increased_K;
 
@@ -92,18 +112,14 @@ private:
 
 public:
 
-  /*
-  * num_iters_per_phase is the number of simulator events til ... TODO doc
+  /**
+  * TODO document how zeros are handled. eg why 1,1,1?
   */
-  Twiddle(
-    unsigned int num_iters_per_phase_ = 1600,
-    double final_K_mse_thresh_ = 0.001,
-    double final_K_sum_thresh_ = 0.5) :
-      pid(K[0], K[1], K[2]),
-      num_iters_per_phase(num_iters_per_phase_),
-      final_K_mse_thresh(final_K_mse_thresh_),
-      final_K_sum_thresh(final_K_sum_thresh_)
-      {}
+  Twiddle(double Kp, double Kd, double Ki) :
+    K{(Kp == 0) ? 1 : Kp, (Kd == 0) ? 1 : Kd, (Ki == 0) ? 1 : Ki},
+    dK{K[0], K[1], K[2]},
+    pid(K[0], K[1], K[2])
+    {}
 
   /*
   * TODO doc the bool in output

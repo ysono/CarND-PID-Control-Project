@@ -4,15 +4,11 @@
 #include <tuple>
 #include "json.hpp"
 #include "PID.h"
-#include "twiddle_manager.cpp"
+#include "pid_driver.cpp"
+#include "twiddle_driver.cpp"
 
 // for convenience
 using json = nlohmann::json;
-
-// For converting back and forth between radians and degrees.
-// constexpr double pi() { return M_PI; }
-// double deg2rad(double x) { return x * pi() / 180; }
-// double rad2deg(double x) { return x * 180 / pi(); }
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -30,36 +26,43 @@ std::string hasData(std::string s) {
   return "";
 }
 
-// PID create_default_pid() {
-//   // return PID(0.2, 4.0, 0.004); // TODO cli arg?
-
-//   return PID(8.751, 20.192, 0.0295);
-// }
-
-int main()
+int main(int argc, char* argv[])
 {
   uWS::Hub h;
 
-  // double default_Kp = 0.2, default_Kd = 3.0, default_Ki = 0.004;
+  Driver * driver = NULL;
+  try {
+    if (argc >= 2 && strcmp(argv[1], "twiddle") == 0) {
+      std::cout << "using twiddle" << std::endl;
+      double Kp = 0, Kd = 0, Ki = 0;
+      if (argc == 5) {
+        Kp = atof(argv[2]);
+        Kd = atof(argv[3]);
+        Ki = atof(argv[4]);
+      }
+      driver = new TwiddleDriver(Kp, Kd, Ki);
+    } else if (argc == 5 && strcmp(argv[1], "pdi") == 0) {
+      std::cout << "using user-defiend pid" << std::endl;
+      double Kp = atof(argv[2]);
+      double Kd = atof(argv[3]);
+      double Ki = atof(argv[4]);
+      driver = new PidDriver(Kp, Kd, Ki);
+    } else if (argc == 2 && strcmp(argv[1], "default") == 0) {
+      std::cout << "using pre-defined pid" << std::endl;
+      driver = new PidDriver(0.2, 2.8, 0.001);
+    }
+  } catch(const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+  }
+  if (driver == NULL) {
+    std::cerr << "usage:" << std::endl
+      << "  pid twiddle <Kp> <Kd> <Ki>" << std::endl
+      << "  pid pdi <Kp> <Kd> <Ki>" << std::endl
+      << "  pid default" << std::endl;
+    exit(1);
+  }
 
-  // PID default_pid(0.2, 4.0, 0.004); // TODO cli arg?
-  // PID pid(8.751, 20.192, 0.0295);
-  // PID default_pid = create_default_pid();
-
-  // Twiddle twiddle;
-
-  TwiddleManager twiddle_manager;
-
-  // bool is_tuning = true;
-  // // TODO in readme say how these were chosen
-  // const double reset_cte_thresh = 0.2;
-  // const double reset_angle_thresh = 5.0 / 180.0 * M_PI;
-  // const double out_of_bounds_cte_thresh = 1.5;
-
-  h.onMessage(
-    // [&default_pid, &twiddle, &is_tuning, &reset_cte_thresh, &reset_angle_thresh, &out_of_bounds_cte_thresh]
-    [&twiddle_manager]
-    (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+  h.onMessage([driver](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -75,56 +78,17 @@ int main()
           double speed = std::stod(j[1]["speed"].get<std::string>());
           double angle = std::stod(j[1]["steering_angle"].get<std::string>());
 
-          // double steering = default_pid.update(cte); // TODO restore this. Add cli option.
+          // double steering, throttle;
+          // std::tie(steering, throttle) = twiddle_driver.drive(cte, speed, angle);
 
-          double steering, throttle;
-          std::tie(steering, throttle) = twiddle_manager.get_control(cte, speed, angle);
-
-          // double steering;
+          // double steering = default_pid.update(cte);
           // double throttle = 0.3;
 
-          // if (is_tuning) {
-
-          //   bool is_done_with_prev_K = false;
-          //   if (fabs(cte) > out_of_bounds_cte_thresh) {
-          //     std::cout << "abort " << twiddle.get_K_as_string() << " due to excessive error";
-          //     twiddle.abort_current_K();
-          //     is_done_with_prev_K = true;
-          //   } else {
-          //     std::tie(steering, is_done_with_prev_K) = twiddle.update(cte);
-          //     if (is_done_with_prev_K) {
-          //       std::cout << "successfully evaluated the previous K";
-          //     }
-          //   }
-
-          //   if (is_done_with_prev_K) {
-          //     std::cout << "; next K to evaluate is " << twiddle.get_K_as_string() << std::endl;
-          //     is_tuning = false;
-          //     default_pid = create_default_pid();
-          //     steering = default_pid.update(cte);
-          //     throttle = 0.08;
-          //   }
-
-          // } else {
-          //   if (fabs(cte) < reset_cte_thresh && fabs(angle) < reset_angle_thresh) {
-          //     std::cout << "start evaluating " << twiddle.get_K_as_string() << std::endl;
-          //     is_tuning = true;
-          //     bool _;
-          //     std::tie(steering, _) = twiddle.update(cte);
-          //   } else {
-          //     steering = default_pid.update(cte);
-          //     throttle = 0.08;
-          //   }
-          // }
+          double steering, throttle;
+          std::tie(steering, throttle) = driver->drive(cte, speed, angle);
 
           if (steering < -1) { steering = -1; }
           if (steering > 1) { steering = 1; }
-
-          // std::cout
-          //   << "CTE: " << cte
-          //   << " angle: " << angle
-          //   << " Steering Value: " << steering
-          //   << std::endl;
 
           json msgJson;
           msgJson["steering_angle"] = steering;

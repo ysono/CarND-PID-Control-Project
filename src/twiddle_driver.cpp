@@ -1,17 +1,16 @@
 #include <tuple>
+#include "driver.h"
 #include "twiddle.cpp"
 
-class TwiddleManager {
+class TwiddleDriver : public Driver {
 private:
 
   enum phase {
-    tuning,
-    // resetting_position,
-    // resetting_steering_and_position
-    resetting
+    resetting,
+    tuning
   };
 
-  phase curr_phase = tuning;
+  phase curr_phase = resetting;
 
   Twiddle twiddle;
 
@@ -22,29 +21,30 @@ private:
   const double out_of_bounds_cte_thresh = 1.5;
   const double reset_cte_thresh = 0.2;
   const double reset_speed_thresh = 2.0;
-  const double reset_angle_thresh = 999; //5.0; // 10.0 / 180.0 * M_PI; // 999; // angle measurement is stuck at 0.4363, so this thresh is useless.
+  const double reset_angle_thresh = 999; // When resetting, angle measurement is often stuck at 0.4363, so disable this threshold.
 
-  PID create_pid_while_resetting() {
-    return PID(0.2, 4.0, 0.004); // TODO cli arg?
+  // TODO explain these numbers
+  const double K_for_resetting[3] = {0.2, 2.8, 0.001}; // TODO put 3 in a .h somewhere
+  PID pid_while_resetting;
 
-    // return PID(8.751, 20.192, 0.0295);
-
-    // return PID(0.2, 0.2, 0);
-  }
-
-  PID pid_while_resetting = create_pid_while_resetting();
-
-  const int cout_width = 120;
+  const int cout_width = 80;
   const std::string backspaces = std::string(cout_width, '\b');
 
 public:
 
-  std::tuple<double, double> get_control(double cte, double speed, double angle) {
+  TwiddleDriver(double Kp, double Kd, double Ki) :
+    twiddle(Kp, Kd, Ki),
+    pid_while_resetting(K_for_resetting[0], K_for_resetting[1], K_for_resetting[2])
+  {
+    std::cout << "initial K to evaluate is " << twiddle.get_K_as_string() << std::endl;
+  }
+
+  std::tuple<double, double> drive(double cte, double speed, double angle) {
 
     if (curr_phase == tuning) {
 
       if (fabs(cte) > out_of_bounds_cte_thresh) {
-        std::cout << "abort evaluating " << twiddle.get_K_as_string() << " due to excessive error";
+        std::cout << "abort evaluating " << twiddle.get_K_as_string() << " b/c out of bounds"; // TODO replace log
         twiddle.abort_current_K();
       } else {
         double steering;
@@ -61,7 +61,7 @@ public:
 
       std::cout << "; next K to evaluate will be " << twiddle.get_K_as_string() << std::endl;
       curr_phase = resetting;
-      pid_while_resetting = create_pid_while_resetting();
+      pid_while_resetting = PID(K_for_resetting[0], K_for_resetting[1], K_for_resetting[2]);
 
     }
 

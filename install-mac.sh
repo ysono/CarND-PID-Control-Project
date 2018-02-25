@@ -9,7 +9,7 @@ cd build
 OPENSSL_VERSION=`openssl version -v | cut -d' ' -f2`
 cmake -DOPENSSL_ROOT_DIR=$(brew --cellar openssl)/$OPENSSL_VERSION -DOPENSSL_LIBRARIES=$(brew --cellar openssl)/$OPENSSL_VERSION/lib ..
 make 
-sudo make install
+make install
 cd ..
 cd ..
-sudo rm -r uWebSockets
+rm -fr uWebSockets

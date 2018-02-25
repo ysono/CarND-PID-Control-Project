@@ -14,17 +14,39 @@ private:
 
   Twiddle twiddle;
 
+  /**
+  * When using TwiddleDriver to tune, set throttle to a constant, to simplify things.
+  */
   const double throttle_during_tuning = 0.3;
   const double throttle_during_resetting = 0.08;
 
-  // TODO in readme say how these were chosen
+  /**
+  * During tuning phase, when the car goes out of bounds wrt this threshold, abort tuning and reset.
+  */
   const double out_of_bounds_cte_thresh = 1.5;
+
+  /**
+  * During resetting phase, consider it done iff cte, speed, and angle reach
+  * small values within their respective thresholds.
+  *
+  * However, during resetting, the angle measurement is often stuck at 0.4363,
+  * so disable angle thresholding.
+  */
   const double reset_cte_thresh = 0.2;
   const double reset_speed_thresh = 2.0;
-  const double reset_angle_thresh = 999; // When resetting, angle measurement is often stuck at 0.4363, so disable this threshold.
+  const double reset_angle_thresh = 999;
 
-  // TODO explain these numbers
-  const double K_for_resetting[3] = {0.2, 2.8, 0.001}; // TODO put 3 in a .h somewhere
+  /*
+  * This set of hyperparameters is used for a pid controller to reset the car
+  * back to the center at a near-stationary speed, after twiddle finishes evaluating
+  * one set of hyperparameters, in preparation for evaluating the next set.
+  *
+  * These hyperparameters were inially guided by in-situ experiments with
+  * `doc/initial-hyperparameters.py`, and were manually updated and recompiled
+  * as better parameters were found. Now they're set to the final optimal values,
+  * the same as those used by the default `PidDriver` in `main.cpp`.
+  */
+  const double K_for_resetting[3] = {0.2, 2.8, 0.001};
   PID pid_while_resetting;
 
   const int cout_width = 80;
@@ -44,7 +66,7 @@ public:
     if (curr_phase == tuning) {
 
       if (fabs(cte) > out_of_bounds_cte_thresh) {
-        std::cout << "abort evaluating " << twiddle.get_K_as_string() << " b/c out of bounds"; // TODO replace log
+        std::cout << "abort evaluating " << twiddle.get_K_as_string() << " b/c out of bounds";
         twiddle.abort_current_K();
       } else {
         double steering;
@@ -65,7 +87,7 @@ public:
 
     }
 
-    // Phase is `resetting`.
+    // Here, phase is `resetting`.
 
     bool is_ready_to_tune_again =
       fabs(cte) < reset_cte_thresh && fabs(speed) < reset_speed_thresh && fabs(angle) < reset_angle_thresh;
@@ -87,9 +109,11 @@ public:
       return std::make_tuple(steering, throttle_during_tuning);
     }
 
-    // Come to a near-stop, and except user to move the car back to the center pointing straight ahead.
+    // Come to a near-stop, and use a preset PID plus user intervention to
+    // move the car back to the center (and ideally pointing straight ahead,
+    // but angle thresholding is disabled).
 
-    double throttle_to_stop = (speed > reset_speed_thresh) ? -1 : throttle_during_resetting; // TODO use pid?
+    double throttle_to_stop = (speed > reset_speed_thresh) ? -1 : throttle_during_resetting;
 
     if (fabs(cte) > out_of_bounds_cte_thresh) {
       // Note, simulator gives speed as a positive value even when reversing.
@@ -100,43 +124,3 @@ public:
 
   }
 };
-
-
-/*
-          double steering;
-          double throttle = 0.3;
-
-          if (is_tuning) {
-
-            bool is_done_with_prev_K = false;
-            if (fabs(cte) > out_of_bounds_cte_thresh) {
-              std::cout << "abort " << twiddle.get_K_as_string() << " due to excessive error";
-              twiddle.abort_current_K();
-              is_done_with_prev_K = true;
-            } else {
-              std::tie(steering, is_done_with_prev_K) = twiddle.update(cte);
-              if (is_done_with_prev_K) {
-                std::cout << "successfully evaluated the previous K";
-              }
-            }
-
-            if (is_done_with_prev_K) {
-              std::cout << "; next K to evaluate is " << twiddle.get_K_as_string() << std::endl;
-              is_tuning = false;
-              default_pid = create_default_pid();
-              steering = default_pid.update(cte);
-              throttle = 0.08;
-            }
-
-          } else {
-            if (fabs(cte) < reset_cte_thresh && fabs(angle) < reset_angle_thresh) {
-              std::cout << "start evaluating " << twiddle.get_K_as_string() << std::endl;
-              is_tuning = true;
-              bool _;
-              std::tie(steering, _) = twiddle.update(cte);
-            } else {
-              steering = default_pid.update(cte);
-              throttle = 0.08;
-            }
-          }
-*/

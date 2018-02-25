@@ -11,8 +11,8 @@ private:
 
   enum phase {
     testing_zero_hyperparams,
-    testing_increased_K,
-    testing_decreased_K,
+    testing_increased_term,
+    testing_decreased_term,
     finalized_hyperparams
   };
 
@@ -43,40 +43,44 @@ private:
       lowest_mse = mse;
       K_ind = 0;
       K[K_ind] += dK[K_ind];
-      curr_phase = testing_increased_K;
+      curr_phase = testing_increased_term;
 
-    } else if (curr_phase == testing_increased_K) {
+    } else if (curr_phase == testing_increased_term) {
 
       if (mse < lowest_mse) {
-        // Increasing the current K was beneficial
-        // Keep the increased value for the current K and move on to the next K
-        // Next time we increase/decrease the current K, we'll want to do it faster => make the current dK larger
-        // Increase the next K
-        // Keep the phase as "testing increased K"
+        // Increasing the current term was beneficial
+        // Keep the increased value for the current term and move on to the next term
+        // Next time we increase/decrease the current term, we'll want to do it faster => make the delta-current-term larger
+        // Increase the next term
+        // Keep the phase as "testing increased term"
         lowest_mse = mse;
         dK[K_ind] *= 1.1;
         K_ind = (K_ind + 1) % NUM_K;
         K[K_ind] += dK[K_ind];
       } else {
-        // Increasing the current K was not beneficial
-        // We'll try the current K again, but this time with a decreased value, as long as this decreased value is positive
+        // Increasing the current term was not beneficial
+        // We'll try the current term again, but this time with a decreased value, as long as this decreased value is positive
+        // (Even if we initialize `dK` to be the same as `K`, which the contructor indeed does,
+        // negative term is still possible. The stochastic nature of the simulation means that,
+        // if previous decrease of this term improved mse, twiddle "thinks" that
+        // further decreasing the same term may further improve mse.)
 
-        // Decreased current K is `the pre-increased K minus dK`
+        // Decreased current term is `the pre-increased term minus delta-current-term`
         double decreased_current_K = K[K_ind] - 2 * dK[K_ind];
 
         if (decreased_current_K > 0) {
-          // Adopt the decreased current K
+          // Adopt the decreased current term
           // Do not adjust the current dK.
-          // Change the phase to "testing decreased K"
+          // Change the phase to "testing decreased term"
           K[K_ind] = decreased_current_K;
-          curr_phase = testing_decreased_K;
+          curr_phase = testing_decreased_term;
         } else {
-          // Skip the decreased K
-          // Restore the current K to its pre-increase value
-          // Next time we increase/decrease the current K, we'll want to do it slower => make the current dK smaller
-          // Move on to the next K
-          // Increment the next K
-          // Keep the phase as "testing increased K"
+          // Skip the decreased term
+          // Restore the current term to its pre-increase value
+          // Next time we increase/decrease the current term, we'll want to do it slower => make the delta-current-term smaller
+          // Move on to the next term
+          // Increment the next term
+          // Keep the phase as "testing increased term"
           K[K_ind] -= dK[K_ind];
           dK[K_ind] *= 0.9;
           K_ind = (K_ind + 1) % NUM_K;
@@ -84,36 +88,42 @@ private:
         }
       }
 
-    } else if (curr_phase == testing_decreased_K) {
+    } else if (curr_phase == testing_decreased_term) {
 
       if (mse < lowest_mse) {
-        // Decreasing the current K was beneficial
-        // We'll keep the decreased value for the current K
-        // Next time we increase/decrease the current K, we'll want to do it faster => make the current dK larger
+        // Decreasing the current term was beneficial
+        // We'll keep the decreased value for the current term
+        // Next time we increase/decrease the current term, we'll want to do it faster => make the delta-current-term larger
         lowest_mse = mse;
         dK[K_ind] *= 1.1;
       } else {
-        // Neither increasing nor decreasing the current K was beneficial
-        // Restore the original (pre-increase and pre-decrease) value for the current K
-        // Next time we increase/decrease the current K, we'll want to do it slower => make the current dK smaller
+        // Neither increasing nor decreasing the current term was beneficial
+        // Restore the original (pre-increase and pre-decrease) value for the current term
+        // Next time we increase/decrease the current term, we'll want to do it slower => make the delta-current-term smaller
         K[K_ind] += dK[K_ind];
         dK[K_ind] *= 0.9;
       }
-      // Whether decreasing the curent K was beneficial or not ...
-      // We're done with the current K. Move on to the next K
-      // Increase the next K
-      // Change the phase to "testing increased K"
+      // Whether decreasing the curent term was beneficial or not ...
+      // We're done with the current term. Move on to the next term
+      // Increase the next term
+      // Change the phase to "testing increased term"
       K_ind = (K_ind + 1) % NUM_K;
       K[K_ind] += dK[K_ind];
-      curr_phase = testing_increased_K;
+      curr_phase = testing_increased_term;
 
     }
+
+    sse = 0;
+    iter_count = 0;
+
+    pid = PID(K[0], K[1], K[2]);
   }
 
 public:
 
   /**
-  * TODO document how zeros are handled. eg why 1,1,1?
+  * This twiddle implementation skips tuning any parameter that is zero or negative.
+  * Therefore if any provided hyperparameter is zero, set it arbitrarily to 1.
   */
   Twiddle(double Kp, double Kd, double Ki) :
     K{(Kp == 0) ? 1 : Kp, (Kd == 0) ? 1 : Kd, (Ki == 0) ? 1 : Ki},
@@ -121,15 +131,22 @@ public:
     pid(K[0], K[1], K[2])
     {}
 
-  /*
-  * TODO doc the bool in output
+  /**
+  * Returns tuple of
+  * (
+  *   steering control value,
+  *   whether evaluation of the current set of hyperparameters is done
+  * )
+  *
+  * The latter bool notifies the consumer code to prepare the simulation for
+  * the next round of evaluation.
   */
   std::tuple<double, bool> update(double process_value) {
     if (curr_phase == finalized_hyperparams) {
       return std::make_tuple(pid.update(process_value), false);
     }
 
-    sse += pow(0 - process_value, 2);
+    sse += pow(0 - process_value, 2); // steering is not added to error, but perhaps it should be.
     ++iter_count;
 
     bool is_end_of_phase = iter_count > num_iters_per_phase;
@@ -140,19 +157,11 @@ public:
       std::cout << "mse is " << mse << std::endl;
 
       if (mse < final_K_mse_thresh || K[0] + K[1] + K[2] < final_K_sum_thresh) {
-
         // Sufficiently good hyperparameters are discovered
         // Stop tuning and continue using the existing hyperparams with the existing derivative and integration state
         curr_phase = finalized_hyperparams;
-
       } else {
-
         change_phase(mse);
-
-        sse = 0;
-        iter_count = 0;
-
-        pid = PID(K[0], K[1], K[2]);
       }
     }
 
@@ -163,11 +172,6 @@ public:
 
   void abort_current_K() {
     change_phase(initial_mse);
-
-    sse = 0;
-    iter_count = 0;
-
-    pid = PID(K[0], K[1], K[2]);
   }
 
   std::string get_K_as_string() {

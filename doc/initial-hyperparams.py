@@ -1,4 +1,4 @@
-# Minimally modified from https://classroom.udacity.com/nanodegrees/nd013/parts/40f38239-66b6-46ec-ae68-03afd8a601c8/modules/f1820894-8322-4bb3-81aa-b26b3c6dcbaf/lessons/1397890f-71c5-4d83-aae7-0a031eedd1f2/concepts/34d4a65f-44d9-462f-b246-c2e653a19c1d
+# Modified from https://classroom.udacity.com/nanodegrees/nd013/parts/40f38239-66b6-46ec-ae68-03afd8a601c8/modules/f1820894-8322-4bb3-81aa-b26b3c6dcbaf/lessons/1397890f-71c5-4d83-aae7-0a031eedd1f2/concepts/34d4a65f-44d9-462f-b246-c2e653a19c1d
 
 # ----------------
 # User Instructions
@@ -117,27 +117,6 @@ def make_robot():
     robot.set_steering_drift(10 / 180 * np.pi)
     return robot
 
-
-# NOTE: We use params instead of tau_p, tau_d, tau_i
-# def run(robot, params, n=20, speed=1.0):
-#     x_trajectory = []
-#     y_trajectory = []
-#     err = 0
-#     prev_cte = robot.y
-#     int_cte = 0
-#     for i in range(n):
-#         cte = robot.y
-#         diff_cte = cte - prev_cte
-#         int_cte += cte
-#         prev_cte = cte
-#         steer = -params[0] * cte - params[1] * diff_cte - params[2] * int_cte
-#         robot.move(steer, speed)
-#         x_trajectory.append(robot.x)
-#         y_trajectory.append(robot.y)
-
-#         err += cte ** 2 + steer ** 2 # <==== From the lesson's original code, removed the `if` condition; i.e. collect squared error from the beginning.
-#     return x_trajectory, y_trajectory, err / n
-
 def run(robot, params, total_timesteps=600, speed=1.0):
     tau_p, tau_d, tau_i = params
 
@@ -147,17 +126,29 @@ def run(robot, params, total_timesteps=600, speed=1.0):
 
     sse = 0
 
-    timesteps_to_change_setpoint = 400
+    timesteps_to_end_of_sigmoid = total_timesteps / 3
+    sigmoid_bound = 6 # sigmoid is approximately 1 for abs(x) > 6
+    sigmoid_factor = sigmoid_bound * 2 / timesteps_to_end_of_sigmoid # map x range [-6, 6] to timesteps [0, 400]
     
+    timesteps_per_step = total_timesteps / 6
+    step = -0.5
+
     prev_error_value = None
     error_value_integ = 0
     for timestep in range(total_timesteps):
         delta_t = 1
 
         process_value = robot.y
-        setpoint = int(timestep / timesteps_to_change_setpoint) * -1
-        # setpoint = 0
+
+        # setpoint is initially sigmoid and then stepped. See the output image for visual explanation
+        if timestep < timesteps_to_end_of_sigmoid:
+            temp_exp = math.exp((timestep - timesteps_to_end_of_sigmoid / 2) * sigmoid_factor)
+            sigmoid = temp_exp / (temp_exp + 1)
+            setpoint = -sigmoid # want setpoint to go from 0 to -1
+        else:
+            setpoint = int((timestep - timesteps_to_end_of_sigmoid) / timesteps_per_step) * step
         setpoints.append(setpoint)
+
         error_value = setpoint - process_value
 
         err_value_derivative = 0 if prev_error_value is None else (error_value - prev_error_value) / delta_t
@@ -175,7 +166,7 @@ def run(robot, params, total_timesteps=600, speed=1.0):
         x_trajectory.append(robot.x)
         y_trajectory.append(robot.y)
 
-        # we could normalize `control_variable`
+        # include normalized `control_variable` into error
         sse += error_value ** 2 + (control_variable / math.pi) ** 2
 
     mse = sse / total_timesteps
@@ -184,7 +175,6 @@ def run(robot, params, total_timesteps=600, speed=1.0):
 
 # Make this tolerance bigger if you are timing out!
 def twiddle(tol=0.2): 
-    # Don't forget to call `make_robot` before every call of `run`!
     p = [0, 0, 0]
     dp = [1, 1, 1]
 

@@ -6,6 +6,8 @@ private:
 
   double Kp, Kd, Ki;
 
+  double set_point;
+
   bool has_prev_err = false;
 
   double prev_err;
@@ -14,12 +16,10 @@ private:
 
 public:
 
-  PID(double Kp, double Kd, double Ki);
+  PID(double Kp, double Kd, double Ki, double set_point = 0);
 
   /*
   * Update the PID error variables given cross track error.
-  *
-  * Setpoint is 0.
   */
   double update(double process_value);
 

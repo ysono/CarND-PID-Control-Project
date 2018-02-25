@@ -1,7 +1,7 @@
 #ifndef DRIVER_H
 #define DRIVER_H
 
-#include <tuple> // TODO
+#include <tuple>
 
 class Driver {
 public:
@@ -9,9 +9,11 @@ public:
   virtual ~Driver() = default;
 
   /**
-  * TODO doc
+  * Takes the current telemetry as args.
+  *
+  * Returns a tuple of (steering, throttle) control values.
   */
-  virtual std::tuple<double, double> drive(double cte, double speed, double angle) { return std::make_tuple(0, 0); } //  = 0; // TODO
+  virtual std::tuple<double, double> drive(double cte, double speed, double angle) = 0;
 
 };
 

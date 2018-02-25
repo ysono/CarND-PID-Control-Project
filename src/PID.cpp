@@ -1,14 +1,13 @@
 #include "PID.h"
 
-PID::PID(double Kp, double Kd, double Ki) {
+PID::PID(double Kp, double Kd, double Ki, double set_point) {
   this->Kp = Kp;
   this->Kd = Kd;
   this->Ki = Ki;
+  this->set_point = set_point;
 }
 
 double PID::update(double process_value) {
-
-  double set_point = 0;
 
   double err = set_point - process_value;
 

@@ -47,18 +47,31 @@ int main(int argc, char* argv[])
       double Kd = atof(argv[3]);
       double Ki = atof(argv[4]);
       driver = new PidDriver(Kp, Kd, Ki);
-    } else if (argc == 2 && strcmp(argv[1], "default") == 0) {
+    } else if (argc == 2 && strcmp(argv[1], "help") == 0) {
+      // noop
+    } else if (argc == 2) {
+      std::cout << "using pre-defined pid and user-defined speed" << std::endl;
+      driver = new PidDriver(0.2, 2.8, 0.001, atof(argv[1]));
+    } else if (argc == 1) {
       std::cout << "using pre-defined pid" << std::endl;
       driver = new PidDriver(0.2, 2.8, 0.001);
     }
   } catch(const std::exception & e) {
+    // eg error in atof
     std::cerr << e.what() << std::endl;
   }
   if (driver == NULL) {
     std::cerr << "usage:" << std::endl
+      << "  pid twiddle" << std::endl
+      << "    tune with twiddle from scratch" << std::endl
       << "  pid twiddle <Kp> <Kd> <Ki>" << std::endl
+      << "    tune with twiddle from specified hyperparameters" << std::endl
       << "  pid pdi <Kp> <Kd> <Ki>" << std::endl
-      << "  pid default" << std::endl;
+      << "    drive with the specified hyperparameters for steering, and some default throttle" << std::endl
+      << "  pid <speed>" << std::endl
+      << "    drive with the final optimized hyperparameters for steering and throttle, and at a target speed in mph" << std::endl
+      << "  pid" << std::endl
+      << "    drive with the final optimized hyperparameters for steering and throttle, and at the default target speed of 40mph" << std::endl;
     exit(1);
   }
 
@@ -77,12 +90,6 @@ int main(int argc, char* argv[])
           double cte = std::stod(j[1]["cte"].get<std::string>());
           double speed = std::stod(j[1]["speed"].get<std::string>());
           double angle = std::stod(j[1]["steering_angle"].get<std::string>());
-
-          // double steering, throttle;
-          // std::tie(steering, throttle) = twiddle_driver.drive(cte, speed, angle);
-
-          // double steering = default_pid.update(cte);
-          // double throttle = 0.3;
 
           double steering, throttle;
           std::tie(steering, throttle) = driver->drive(cte, speed, angle);
@@ -123,8 +130,9 @@ int main(int argc, char* argv[])
     std::cout << "Connected!!!" << std::endl;
   });
 
-  h.onDisconnection([&h](uWS::WebSocket<uWS::SERVER> ws, int code, char *message, size_t length) {
+  h.onDisconnection([&h, &driver](uWS::WebSocket<uWS::SERVER> ws, int code, char *message, size_t length) {
     ws.close();
+    delete driver;
     std::cout << "Disconnected" << std::endl;
   });
 

@@ -4,15 +4,15 @@
 #include <tuple>
 #include "json.hpp"
 #include "PID.h"
-#include "twiddle.cpp"
+#include "twiddle_manager.cpp"
 
 // for convenience
 using json = nlohmann::json;
 
 // For converting back and forth between radians and degrees.
-constexpr double pi() { return M_PI; }
-double deg2rad(double x) { return x * pi() / 180; }
-double rad2deg(double x) { return x * 180 / pi(); }
+// constexpr double pi() { return M_PI; }
+// double deg2rad(double x) { return x * pi() / 180; }
+// double rad2deg(double x) { return x * 180 / pi(); }
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -30,9 +30,11 @@ std::string hasData(std::string s) {
   return "";
 }
 
-PID create_default_pid() {
-  return PID(0.2, 4.0, 0.004); // TODO cli arg?
-}
+// PID create_default_pid() {
+//   // return PID(0.2, 4.0, 0.004); // TODO cli arg?
+
+//   return PID(8.751, 20.192, 0.0295);
+// }
 
 int main()
 {
@@ -42,17 +44,21 @@ int main()
 
   // PID default_pid(0.2, 4.0, 0.004); // TODO cli arg?
   // PID pid(8.751, 20.192, 0.0295);
-  PID default_pid = create_default_pid();
+  // PID default_pid = create_default_pid();
 
-  Twiddle twiddle;
+  // Twiddle twiddle;
 
-  bool is_tuning = true;
-  const double reset_cte_thresh = 0.2;
-  const double reset_angle_thresh = 5.0 / 180.0 * pi();
-  const double out_of_bounds_cte_thresh = 1.8;
+  TwiddleManager twiddle_manager;
+
+  // bool is_tuning = true;
+  // // TODO in readme say how these were chosen
+  // const double reset_cte_thresh = 0.2;
+  // const double reset_angle_thresh = 5.0 / 180.0 * M_PI;
+  // const double out_of_bounds_cte_thresh = 1.5;
 
   h.onMessage(
-    [&default_pid, &twiddle, &is_tuning, &reset_cte_thresh, &reset_angle_thresh, &out_of_bounds_cte_thresh]
+    // [&default_pid, &twiddle, &is_tuning, &reset_cte_thresh, &reset_angle_thresh, &out_of_bounds_cte_thresh]
+    [&twiddle_manager]
     (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -69,87 +75,60 @@ int main()
           double speed = std::stod(j[1]["speed"].get<std::string>());
           double angle = std::stod(j[1]["steering_angle"].get<std::string>());
 
-          // double steer_value;
-          // // if (counter % 30 > 15) {
-          // if (cte < 0) {
-          //   steer_value = M_PI/4;
-          // } else {
-          //   steer_value = -M_PI/4;
-          // }
+          // double steering = default_pid.update(cte); // TODO restore this. Add cli option.
 
-          // double steer_value = default_pid.update(cte); // TODO restore this. Add cli option.
+          double steering, throttle;
+          std::tie(steering, throttle) = twiddle_manager.get_control(cte, speed, angle);
 
-          double steer_value;
+          // double steering;
+          // double throttle = 0.3;
 
-          if (is_tuning) {
-            if (fabs(cte) > out_of_bounds_cte_thresh) {
-              std::cout << "abort tuning " << twiddle.get_K_as_string() << " due to excessive error" << std::endl;
-              twiddle.abort_tuning();
-              is_tuning = false;
-              default_pid = create_default_pid();
-              steer_value = default_pid.update(cte);
-            } else {
-              std::string K_str = twiddle.get_K_as_string();
-              bool did_tuning_finish;
-              std::tie(steer_value, did_tuning_finish) = twiddle.update(cte);
-              if (did_tuning_finish) {
-                is_tuning = false;
-                std::cout << "successfully ended tuning " << K_str << std::endl;
-              }
-            }
-          } else {
-            if (fabs(cte) < reset_cte_thresh && fabs(angle) < reset_angle_thresh) {
-              std::cout << "start tuning " << twiddle.get_K_as_string() << std::endl;
-              is_tuning = true;
-              bool _;
-              std::tie(steer_value, _) = twiddle.update(cte);
-            } else {
-              steer_value = default_pid.update(cte);
-            }
-          }
+          // if (is_tuning) {
 
-          // if (is_in_between_tuning) {
-          //   if (fabs(cte) < reset_cte_thresh && fabs(angle) < reset_angle_thresh) {
-          //     is_in_between_tuning = false;
-          //     bool _;
-          //     std::tie(steer_value, _) = twiddle.update(cte);
-          //     std::cout << "start tuning " << twiddle.get_K_as_string() << std::endl;
+          //   bool is_done_with_prev_K = false;
+          //   if (fabs(cte) > out_of_bounds_cte_thresh) {
+          //     std::cout << "abort " << twiddle.get_K_as_string() << " due to excessive error";
+          //     twiddle.abort_current_K();
+          //     is_done_with_prev_K = true;
           //   } else {
-          //     steer_value = default_pid.update(cte);
+          //     std::tie(steering, is_done_with_prev_K) = twiddle.update(cte);
+          //     if (is_done_with_prev_K) {
+          //       std::cout << "successfully evaluated the previous K";
+          //     }
           //   }
-          // } else if (fabs(cte) > out_of_bounds_cte_thresh) {
-          //   std::cout << "aborted tuning " << twiddle.get_K_as_string() << " due to excessive error" << std::endl;
-          //   twiddle.abort_tuning();
-          //   is_in_between_tuning = true;
-          //   steer_value = default_pid.update(cte);
+
+          //   if (is_done_with_prev_K) {
+          //     std::cout << "; next K to evaluate is " << twiddle.get_K_as_string() << std::endl;
+          //     is_tuning = false;
+          //     default_pid = create_default_pid();
+          //     steering = default_pid.update(cte);
+          //     throttle = 0.08;
+          //   }
+
           // } else {
-          //   bool is_tuning_done;
-          //   std::tie(steer_value, is_tuning_done) = twiddle.update(cte);
-          //   if (is_tuning_done) {
-          //     is_in_between_tuning = true;
-          //     std::cout << "successfully ended the last twiddle phase" << std::endl;
+          //   if (fabs(cte) < reset_cte_thresh && fabs(angle) < reset_angle_thresh) {
+          //     std::cout << "start evaluating " << twiddle.get_K_as_string() << std::endl;
+          //     is_tuning = true;
+          //     bool _;
+          //     std::tie(steering, _) = twiddle.update(cte);
+          //   } else {
+          //     steering = default_pid.update(cte);
+          //     throttle = 0.08;
           //   }
           // }
 
-          
+          if (steering < -1) { steering = -1; }
+          if (steering > 1) { steering = 1; }
 
-
-          /*
-          * TODO: Calcuate steering value here, remember the steering value is
-          * [-1, 1].
-          * NOTE: Feel free to play around with the throttle and speed. Maybe use
-          * another PID controller to control the speed!
-          */
-          
           // std::cout
           //   << "CTE: " << cte
           //   << " angle: " << angle
-          //   << " Steering Value: " << steer_value
+          //   << " Steering Value: " << steering
           //   << std::endl;
 
           json msgJson;
-          msgJson["steering_angle"] = steer_value;
-          msgJson["throttle"] = 0.3;
+          msgJson["steering_angle"] = steering;
+          msgJson["throttle"] = throttle;
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
         }

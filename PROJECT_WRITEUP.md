@@ -1,12 +1,38 @@
 ## Describe the effect of the P, I, D component of the PID algorithm in their implementation.
 
-As described below, the 3 hyperparameters were tuned with semi-autonomous twiddle cycles. But when manually tuning, it was done with the consideration that:
+As described below, the 3 hyperparameters were tuned with semi-autonomous twiddle cycles. But when manually tuning, it was done with following considerations.
 
-- Increased P should quicken correction
-- Increased D should decrease overshoot
-- Increased I should effectively remember the past error longer
+### P term
 
-and vice versa.
+P term is the primary mechanism that nudges the car towards the setpoint. Steering, in radians, is set proportional to cte, in meters. The plant is the bicycle model (with unknown variations and errors as implemented in the simulator), so the effect of steering on cte is non-linear.
+
+P causes overshoot because, as long as cte is nonzero at any point of time, the car crosses the setpoint at a non-zero angle and with straight (zero) steering.
+
+Small P slows down reaction against the car getting away from setpoint, and hence slows down returning to setpoint. Sufficiently small P guarantees lack of convergence, ie increased wobbling over time, making the car's trajectory worse than the initial condition.
+
+Large P expedites return to setpoint, but uses jerkier steering. But more importantly, large P increases the likelihood that the car will drive in a tight ellipse-like pattern out of bounds, never touching setpoint. This is because large P makes tight steering more likely, which makes smaller diameter circles more likely, which increases the chance of cte being sufficiently large to make such circular motion possible. It is hardly a solution to increase the speed in order to increase the diameter, because that would increase overshoot. Instead, steering could be constrained to a narrower range, with the understanding that this effectively disables high absolute values of P and hence delays return to setpoint. Constrained steering also delays the eventual convergence and, by reducing the approach angle to setpoint, reduces the amplitude of overshoots. Maybe the resulting trajectory from constrained steering or P is like applying a convolution on trajectory from large P?
+
+### D term
+
+D term counteracts the current trend of change in cte. If the car is moving towards left, D term influences steering to turn more right or less left; and vice versa. D term does not act on cte value itself, i.e. it does not act on car's position relative to setpoint, or to any other absolute line of reference.
+
+D term both complements and negates the effect of the P term, by turning steering towards setpoint when going away from setpoint, and turning away from it when approaching it. It is called the dampening term, not because it reduces sharpness of steering, but because it dampens the resulting cte (trajectory). D term makes steering sharper, complementing P, while the car is travelling away from setpoint. D term makes steering straighter, negating P, while the car is returning to setpoint.
+
+By dampening, D term delays crossover with setpoint, but it reduces overshoot because 1) it brings the steering to a gentler angle at the time of crossover 2) immediately following the crossover, it complemenets P term to counteract overshoot.
+
+Small D leaves overshoots untamed, and this is called under-damping. Large D excessively delays return to setpoint, and this is called over-damping. We aim to find a medium D that causes critically-damped response.
+
+Optimal D depends on the kinds of curve the car encounters. On a tight curve, D should be sufficiently large to complement P, so that P does not have to be too large, but D must not be so large as to leave the car strayed into the outside margin for too long.
+
+### I term
+
+I term eliminates the steady-state offset away from setpoint.
+
+Since the simulation runs on a counter-clockwise circuit, it is estimated that on average, the car spends slightly more time on the outside, which is the right side, if the car did not have any biased steering (I believe NASCARs are set up for refined left turns, if not biased).
+
+The goal of I term is to reverse accumulated historical straying. However, the calculation of I term does not distinguish recent or old straying. Therefore, I term does act like a more aggressive version of P, for as long as it "remembers" the integral as nonzero. To minimize the influence of I on the present, I must be kept small.
+
+### Fianl values
 
 Then final chosen hyperparameters were `0.2, 2.8, 0.001`.
 
